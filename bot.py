@@ -1,19 +1,14 @@
-#
-#
-#
 import re
 from collections import UserDict
 from datetime import datetime, date
+import pickle
 
+# ----------------------------------------------------------------------------
 
-#
-#
-#
 class Field:
     """
     Базовий клас для всіх полів
     """
-
     def __init__(self, value):
         self.value = value
 
@@ -25,7 +20,6 @@ class Birthday(Field):
     """
     Клас для зберігання дня народження
     """
-
     def __init__(self, value):
         try:
             parsed_date = datetime.strptime(value, "%d.%m.%Y").date()
@@ -41,7 +35,6 @@ class Name(Field):
     """
     Клас для зберігання імені
     """
-
     pass
 
 
@@ -49,7 +42,6 @@ class Phone(Field):
     """
     Клас для зберігання номера телефону
     """
-
     def __init__(self, value):
         if not self.validate(value):
             raise ValueError("Invalid phone number: must be 10 digits.")
@@ -67,16 +59,12 @@ class Record:
     """
     Клас для зберігання одного запису
     """
-
     def __init__(self, name):
         self.name = Name(name)
         self.phones = []
         self.birthday = None
 
     def add_phone(self, phone_number: str):
-        """
-        Додає телефон. Валідація в конструкторі Phone
-        """
         self.phones.append(Phone(phone_number))
 
     def remove_phone(self, phone_number: str):
@@ -102,13 +90,9 @@ class Record:
         return None
 
     def add_birthday(self, birthday_str: str):
-        """
-        Валідація відбувається в конструкторі Birthday
-        """
         self.birthday = Birthday(birthday_str)
 
     def __str__(self):
-        # Оновлюємо __str__ для показу дня народження, якщо він є
         phone_list = "; ".join(p.value for p in self.phones)
         birthday_str = f", birthday: {self.birthday}" if self.birthday else ""
         return f"Contact name: {self.name.value}, phones: {phone_list}{birthday_str}"
@@ -118,7 +102,6 @@ class AddressBook(UserDict):
     """
     Клас для управління адресною книгою
     """
-
     def add_record(self, record: Record):
         self.data[record.name.value] = record
 
@@ -132,17 +115,11 @@ class AddressBook(UserDict):
             raise KeyError(f"Contact '{name}' not found.")
 
     def get_upcoming_birthdays(self) -> list:
-        """
-        Повертає список користувачів, яких треба привітати
-        протягом наступних 7 днів
-        """
         today = date.today()
         upcoming_birthdays = []
-
         for record in self.data.values():
             if not record.birthday:
                 continue
-
             bday = record.birthday.value
             bday_this_year = bday.replace(year=today.year)
             if bday_this_year < today:
@@ -154,7 +131,6 @@ class AddressBook(UserDict):
                     day_to_congratulate = "Monday"
                 else:
                     day_to_congratulate = bday_this_year.strftime("%A")
-
                 upcoming_birthdays.append(
                     {
                         "name": record.name.value,
@@ -163,132 +139,111 @@ class AddressBook(UserDict):
                 )
         return upcoming_birthdays
 
+# ----------------------------------------------------------------------------
+
+def save_data(book, filename="addressbook.pkl"):
+    """
+    Зберігає адресну книгу у файл
+    """
+    with open(filename, "wb") as f:
+        pickle.dump(book, f)
+
+def load_data(filename="addressbook.pkl"):
+    """
+    Завантажує адресну книгу з файлу.
+    Якщо файл не знайдено або пошкоджено, повертає нову, порожню книгу
+    """
+    try:
+        with open(filename, "rb") as f:
+            return pickle.load(f)
+    except (FileNotFoundError, pickle.UnpicklingError, EOFError):
+        return AddressBook()  
+
+# ----------------------------------------------------------------------------
 
 def input_error(func):
     """
-    Декоратор, який обробляє помилки вводу, що виникають у
-    функціях-обробниках (ValueError, KeyError, IndexError).
+    Декоратор, який обробляє помилки вводу
     """
-
     def inner(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except ValueError as e:
             return str(e)
-        except KeyError as e:
-            return f"Contact not found: {e}"
+        except (KeyError, AttributeError):
+            return "Contact not found."
         except IndexError:
             return "Not enough arguments. Please provide full info."
-
     return inner
 
+# ----------------------------------------------------------------------------
 
 @input_error
 def add_contact(args, book: AddressBook):
-    """
-    Обробник команди "add"
-    """
     name, phone, *_ = args
-
     record = book.find(name)
     message = "Contact updated."
-
     if record is None:
         record = Record(name)
         book.add_record(record)
         message = "Contact added."
-
     if phone:
         record.add_phone(phone)
-
     return message
-
 
 @input_error
 def change_contact(args, book: AddressBook):
-    """
-    Обробник команди "change"
-    """
     name, old_phone, new_phone = args
     record = book.find(name)
-    if record:
-        record.edit_phone(old_phone, new_phone)
-        return f"Contact '{name}' updated: {old_phone} -> {new_phone}."
-    else:
-        raise KeyError(name)
-
+    record.edit_phone(old_phone, new_phone)
+    return f"Contact '{name}' updated: {old_phone} -> {new_phone}."
 
 @input_error
 def show_phone(args, book: AddressBook):
-    """
-    Обробник команди "phone"
-    """
     name = args[0]
     record = book.find(name)
-    if record:
-
-        return str(record)
+    if record.phones:
+        phone_list = '; '.join(p.value for p in record.phones)
+        return f"{name}'s phones: {phone_list}"
     else:
-        raise KeyError(name)
-
+        return f"Contact '{name}' exists but has no phones."
 
 def show_all(book: AddressBook):
-    """
-    Обробник команди "all"
-    """
     if not book.data:
         return "No contacts found."
     return "\n".join(str(record) for record in book.data.values())
 
-
 @input_error
 def add_birthday(args, book: AddressBook):
-    """
-    Обробник команди "add-birthday"
-    """
     name, bday_str = args
     record = book.find(name)
-    if record:
-        record.add_birthday(bday_str)
-        return "Birthday added."
-    else:
-        raise KeyError(name)
-
+    record.add_birthday(bday_str)
+    return "Birthday added."
 
 @input_error
 def show_birthday(args, book: AddressBook):
-    """
-    Обробник команди "show-birthday"
-    """
     name = args[0]
     record = book.find(name)
-    if record:
-        if record.birthday:
-            return str(record.birthday)
-        else:
-            return "Birthday not set for this contact."
+    if record.birthday:
+        return str(record.birthday)
     else:
-        raise KeyError(name)
-
+        return "Birthday not set for this contact."
 
 @input_error
 def birthdays(args, book: AddressBook):
-    """
-    Обробник команди "birthdays"
-    """
     upcoming = book.get_upcoming_birthdays()
     if not upcoming:
         return "No upcoming birthdays in the next week."
-
     response = "Upcoming birthdays:\n"
     for item in upcoming:
         response += f"  {item['name']}: {item['congratulation_day']}\n"
     return response.strip()
 
+# ----------------------------------------------------------------------------
 
 def parse_input(user_input):
     """
-    Парсер команд (без змін).
+    Парсер команд
     """
     parts = user_input.split()
     if not parts:
@@ -302,8 +257,11 @@ def main():
     """
     Головний цикл бота
     """
-    book = AddressBook()
+    # ЗАВАНТАЖИТИ
+    book = load_data() 
     print("Welcome to the assistant bot!")
+    if book.data:
+        print(f"Loaded {len(book.data)} contacts from file.")
 
     while True:
         user_input = input("Enter a command: ")
@@ -316,6 +274,8 @@ def main():
         command, args = parsed_data
 
         if command in ["close", "exit"]:
+            # ЗБЕРЕГТИ
+            save_data(book)
             print("Good bye!")
             break
 
